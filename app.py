@@ -3,46 +3,49 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 
-def scrape_yellow_pages(city):
-    headers = {"User-Agent": "Mozilla/5.0"}
-    search_url = f"https://www.yellowpages.com/search?search_terms=real+estate+agents&geo_location_terms={city.replace(' ', '+')}+AZ"
-    response = requests.get(search_url, headers=headers)
+def get_yellowpages_leads(city):
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+    query_city = city.replace(" ", "+")
+    url = f"https://www.yellowpages.com/search?search_terms=real+estate+agents&geo_location_terms={query_city}%2C+AZ"
+
+    response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
 
-    listings = soup.find_all("div", class_="result")
-    leads = []
+    businesses = soup.find_all("div", class_="info")
 
-    for listing in listings:
-        name = listing.find("a", class_="business-name")
-        phone = listing.find("div", class_="phones phone primary")
-        website_tag = listing.find("a", class_="track-visit-website")
+    results = []
 
-        if name:
-            lead = {
-                "Business Name": name.text.strip(),
-                "Phone Number": phone.text.strip() if phone else "Not listed",
-                "Website": website_tag["href"] if website_tag else "Not listed"
-            }
-            leads.append(lead)
+    for biz in businesses:
+        try:
+            name = biz.find("a", class_="business-name").text.strip()
+        except:
+            name = "Not listed"
+        try:
+            phone = biz.find("div", class_="phones phone primary").text.strip()
+        except:
+            phone = "Not listed"
+        try:
+            website = biz.find("a", class_="track-visit-website")["href"]
+        except:
+            website = "Not listed"
 
-    return leads
+        results.append({"Name": name, "Phone": phone, "Website": website})
 
-st.title("Arizona Real Estate Agent Lead Finder")
+    return results
 
-city = st.text_input("Enter a city in Arizona:")
+# Streamlit UI
+st.title("🔍 Arizona Real Estate Lead Finder")
+city_input = st.text_input("Enter a city in Arizona", "Phoenix")
 
 if st.button("Find Leads"):
-    if city:
-        with st.spinner("Searching YellowPages..."):
-            leads = scrape_yellow_pages(city)
-            if leads:
-                df = pd.DataFrame(leads)
-                st.success(f"✅ Found {len(leads)} leads!")
-                st.dataframe(df)
-
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Download CSV", data=csv, file_name="real_estate_leads.csv", mime="text/csv")
-            else:
-                st.error("❌ No leads found. Try another city.")
+    with st.spinner("Scraping YellowPages..."):
+        leads = get_yellowpages_leads(city_input)
+    if leads:
+        df = pd.DataFrame(leads)
+        st.success(f"✅ Found {len(df)} leads in {city_input}")
+        st.dataframe(df)
+        st.download_button("📥 Download as CSV", df.to_csv(index=False), file_name="real_estate_leads.csv")
     else:
-        st.warning("⚠️ Please enter a city name.")
+        st.error("❌ No leads found. Try another city or check your spelling.")
