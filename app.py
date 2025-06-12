@@ -1,69 +1,38 @@
 import streamlit as st
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
+from bs4 import BeautifulSoup
 import pandas as pd
-import time
 
-def get_yelp_leads(city):
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
+def search_agents(city):
+    headers = {"User-Agent": "Mozilla/5.0"}
+    query = f"real estate agents in {city}, Arizona site:yelp.com"
+    url = f"https://www.bing.com/search?q={query.replace(' ', '+')}"
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    leads = []
+    for item in soup.select("li.b_algo h2 a"):
+        name = item.get_text(strip=True)
+        link = item["href"]
+        leads.append({"Name": name, "Link": link})
 
-    url = f"https://www.yelp.com/search?find_desc=real+estate+agents&find_loc={city.replace(' ', '+')}+AZ"
-    driver.get(url)
-    time.sleep(5)
+    return leads
 
-    results = []
-    listings = driver.find_elements(By.CSS_SELECTOR, "li.border-color--default__09f24__NPAKY")
+st.title("Arizona Real Estate Agent Finder (via Bing)")
 
-    for biz in listings[:10]:  # Adjust how many you want
-        try:
-            name = biz.find_element(By.XPATH, ".//a[contains(@href, '/biz/')]").text
-            link = biz.find_element(By.XPATH, ".//a[contains(@href, '/biz/')]").get_attribute("href")
-        except:
-            continue
-
-        try:
-            phone = biz.find_element(By.XPATH, ".//p[contains(text(),'(')]").text
-        except:
-            phone = "Not listed"
-
-        try:
-            website = biz.find_element(By.XPATH, ".//a[contains(@href, 'biz_redir')]").get_attribute("href")
-        except:
-            website = "Not listed"
-
-        results.append({
-            "Name": name,
-            "Link": link,
-            "Phone": phone,
-            "Website": website
-        })
-
-    driver.quit()
-    return results
-
-# Streamlit UI
-st.title("Arizona Real Estate Lead Generator")
-
-city = st.text_input("Enter Arizona city name (e.g. Phoenix):")
+city = st.text_input("Enter a city in Arizona")
 
 if st.button("Search"):
-    if city.strip() == "":
+    if not city.strip():
         st.warning("Please enter a city.")
     else:
-        with st.spinner("Searching Yelp..."):
-            leads = get_yelp_leads(city)
-            if leads:
-                df = pd.DataFrame(leads)
-                st.success(f"Found {len(leads)} leads!")
-                st.dataframe(df)
-                csv = df.to_csv(index=False).encode("utf-8")
-                st.download_button("📥 Download CSV", data=csv, file_name="real_estate_leads.csv", mime="text/csv")
-            else:
-                st.error("No leads found. Try a different city.")
+        st.info("Searching Bing for agent listings...")
+        results = search_agents(city)
+        if results:
+            df = pd.DataFrame(results)
+            st.success(f"Found {len(results)} leads.")
+            st.dataframe(df)
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download CSV", data=csv, file_name="agent_leads.csv", mime="text/csv")
+        else:
+            st.error("No leads found. Try another city.")
