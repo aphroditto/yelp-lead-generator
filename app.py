@@ -7,38 +7,33 @@ def get_leads(city):
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
-    url = f"https://www.yelp.com/search?find_desc=real+estate+agents&find_loc={city}+AZ"
+    url = f"https://www.yellowpages.com/search?search_terms=real+estate+agents&geo_location_terms={city}+AZ"
     response = requests.get(url, headers=headers)
 
-    if response.status_code != 200:
-        return []
+    soup = BeautifulSoup(response.text, 'html.parser')
+    listings = soup.select(".result")
 
-    soup = BeautifulSoup(response.text, "html.parser")
-    results = []
+    leads = []
+    for biz in listings:
+        name = biz.select_one(".business-name")
+        phone = biz.select_one(".phones")
+        website = biz.select_one("a.track-visit-website")
 
-    for biz in soup.select("li.border-color--default__09f24__NPAKY")[:10]:
-        name_tag = biz.select_one("a.css-19v1rkv")
-        phone_tag = biz.select_one("p.css-8jxw1i")
-        link = "https://www.yelp.com" + name_tag["href"] if name_tag else None
+        leads.append({
+            "Business Name": name.text.strip() if name else "N/A",
+            "Phone": phone.text.strip() if phone else "N/A",
+            "Website": website['href'] if website else "N/A"
+        })
 
-        if name_tag:
-            name = name_tag.get_text()
-            phone = phone_tag.get_text() if phone_tag else "Not listed"
-            results.append({
-                "Business Name": name,
-                "Phone": phone,
-                "Yelp Link": link
-            })
+    return leads
 
-    return results
+st.title("📍 Arizona Real Estate Agent Lead Finder")
 
-# Streamlit interface
-st.title("Arizona Real Estate Agent Lead Generator")
-city = st.text_input("Enter a city in Arizona (e.g., Phoenix)")
+city = st.text_input("Enter a City in Arizona", "")
 
 if st.button("Find Leads"):
-    if city:
-        with st.spinner("Searching Yelp..."):
+    if city.strip():
+        with st.spinner("🔎 Searching..."):
             leads = get_leads(city)
             if leads:
                 df = pd.DataFrame(leads)
@@ -46,6 +41,6 @@ if st.button("Find Leads"):
                 st.dataframe(df)
                 st.download_button("Download CSV", df.to_csv(index=False), "leads.csv", "text/csv")
             else:
-                st.warning("❌ No leads found. Try another city or check spelling.")
+                st.warning("❌ No leads found. Try another city.")
     else:
         st.warning("⚠️ Please enter a city name.")
